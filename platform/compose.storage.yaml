@@ -1,0 +1,15 @@
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_TAG}
+    command: mini -dir=/data -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "8333:8333"        # S3 API, published so host tools can reach it
+    volumes:
+      - ${DATA_ROOT}/seaweedfs:/data
+      - ./conf/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    restart: unless-stopped
+    networks: [lake]
+
+networks:
+  lake:
+    external: true
