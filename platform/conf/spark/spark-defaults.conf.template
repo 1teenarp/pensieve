@@ -1,0 +1,12 @@
+spark.master                          spark://spark-master:7077
+spark.driver.memory                   8g
+spark.executor.cores                  ${EXECUTOR_CORES}
+spark.executor.memory                 ${EXECUTOR_MEMORY}
+spark.cores.max                       ${APP_MAX_CORES}
+spark.serializer                      org.apache.spark.serializer.KryoSerializer
+spark.sql.adaptive.enabled            true
+spark.eventLog.enabled                true
+spark.eventLog.dir                    file:///opt/spark/events
+spark.history.fs.logDirectory         file:///opt/spark/events
+spark.ui.reverseProxy                 true
+spark.ui.reverseProxyUrl              http://${HOST_NAME}:8080

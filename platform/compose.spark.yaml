@@ -1,0 +1,57 @@
+x-spark: &spark
+  image: lakehouse/spark:4.1.2
+  networks: [lake]
+  environment:
+    SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
+  volumes:
+    - ./conf/spark:/opt/spark/conf:ro
+    - ../pipelines/jobs:/opt/jobs:ro
+    - ../libs:/opt/libs:ro
+    - ${DATA_ROOT}/spark-events:/opt/spark/events
+    - ${DATA_ROOT}/landing:/data/landing
+
+services:
+  spark-master:
+    <<: *spark
+    # the only service with `build:`: compose stamps each service's built image with
+    # `com.docker.compose.service`, so three services sharing one tag would race to
+    # export it and the image digest would churn — recreating containers on every
+    # `make up`. One build target = one stable tag for the whole cluster.
+    build: { context: ./docker/spark, args: [SPARK_BASE, ICEBERG_VERSION], provenance: false }
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
+    ports: ["8080:8080"]
+
+  spark-worker:
+    <<: *spark
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      --cores ${SPARK_WORKER_CORES} --memory ${SPARK_WORKER_MEMORY} spark://spark-master:7077
+    environment:
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
+      SPARK_LOCAL_DIRS: /scratch
+      SPARK_WORKER_OPTS: -Dspark.worker.cleanup.enabled=true -Dspark.worker.cleanup.appDataTtl=86400
+    volumes:                      # a YAML merge replaces lists, so repeat them
+      - ./conf/spark:/opt/spark/conf:ro
+      - ../pipelines/jobs:/opt/jobs:ro
+      - ../libs:/opt/libs:ro
+      - ${DATA_ROOT}/spark-events:/opt/spark/events
+      - ${DATA_ROOT}/landing:/data/landing
+      - ${SCRATCH_DIR}:/scratch
+    ports: ["8081-8096:8081"]     # one host port per scaled worker
+    cpus: ${SPARK_WORKER_CORES}
+    mem_limit: ${SPARK_WORKER_MEM_LIMIT}
+    depends_on: [spark-master]
+
+  spark-history:
+    <<: *spark
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    ports: ["18080:18080"]
+
+  spark-client:                   # throwaway driver container for batch jobs
+    <<: *spark
+    profiles: [tools]
+    entrypoint: []
+
+networks:
+  lake:
+    external: true

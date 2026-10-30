@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Executors connect back to the driver. A container's hostname often isn't resolvable
+# by other containers, so advertise the container's IP instead.
+exec /opt/spark/bin/spark-submit --conf spark.driver.host="$(hostname -i)" "$@"
