@@ -1,0 +1,10 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0           # replaced by autoupdate
+    hooks: [{ id: gitleaks }]          # blocks commits containing keys or passwords
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.9.1
+    hooks: [{ id: nbstripout }]        # commits notebooks without outputs
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks: [{ id: ruff }]

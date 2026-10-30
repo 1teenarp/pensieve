@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# usage: ./dc <any docker compose command>   e.g. ./dc ps, ./dc logs -f trino, STACKS="stream" ./dc up -d
+set -euo pipefail
+cd "$(dirname "$0")"
+set -a; . ./versions.env; [ -f .env ] && . ./.env; . "shapes/${SHAPE:-small}.env"; set +a
+stacks="${STACKS:-}"
+if [ -z "$stacks" ]; then                       # default: every stack file that exists
+  for f in platform/compose.*.yaml; do [ -e "$f" ] && stacks="$stacks $(basename "$f" .yaml | cut -d. -f2)"; done
+fi
+args=()
+for s in $stacks; do [ -f "platform/compose.$s.yaml" ] && args+=(-f "platform/compose.$s.yaml"); done
+exec docker compose -p homelab --project-directory platform "${args[@]}" "$@"
