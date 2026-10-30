@@ -1,5 +1,5 @@
-conf:
-	@echo "nothing to render yet"
+conf:                         # no recipe here; each stack's .mk adds its rendered files as prerequisites
+.PHONY: conf
 
 lock:                         # regenerate every image's requirements.lock
 	for d in platform/docker/*/; do \

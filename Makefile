@@ -7,7 +7,8 @@ export
 DC     := ./dc
 CORE   := storage catalog spark query sources
 STACKS ?= $(CORE)
-SCALE   = $(if $(filter spark,$(STACKS)),--scale spark-worker=$(SPARK_WORKERS))
+# the worker-scaling flag is added once the Spark stack exists, not before
+SCALE   = $(if $(filter spark,$(STACKS)),$(if $(wildcard platform/compose.spark.yaml),--scale spark-worker=$(SPARK_WORKERS)),)
 
 net:
 	docker network inspect lake >/dev/null 2>&1 || docker network create lake
