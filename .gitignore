@@ -1,0 +1,13 @@
+.env
+platform/conf/**/*.generated
+platform/conf/spark/spark-defaults.conf
+platform/conf/seaweedfs/s3.json
+__pycache__/
+.venv/
+mlruns/
+.ipynb_checkpoints/
+recordings/
+checkpoints/
+*.pt
+*.safetensors
+*.gguf

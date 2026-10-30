@@ -90,10 +90,10 @@ Generate a cluster ID once and add it to `.env` as `KAFKA_CLUSTER_ID`:
 
 ```bash
 docker run --rm apache/kafka:4.3.0 /opt/kafka/bin/kafka-storage.sh random-uuid
-sudo mkdir -p /hot/lakehouse/kafka && sudo chown 1000:1000 /hot/lakehouse/kafka   # 1000 = appuser in the image
+sudo mkdir -p /srv/pensieve/kafka && sudo chown 1000:1000 /srv/pensieve/kafka   # 1000 = appuser in the image
 ```
 
-Also add `KAFKA_DATA=/hot/lakehouse/kafka`. Kafka writes sequentially, but fsyncs and many partitions are kinder to SSD than to the 18 TB hard drive.
+Also add `KAFKA_DATA=/srv/pensieve/kafka`. Kafka writes sequentially, but fsyncs and many partitions are kinder to SSD than to the 18 TB hard drive.
 
 `compose.stream.yaml`:
 

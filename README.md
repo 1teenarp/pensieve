@@ -53,5 +53,5 @@ Datasets, checkpoints, model weights and screen recordings live outside the repo
 
 One phase is one branch (`phase/t1-p03`), one pull request and one tag. Whoever builds it, a person or
 a coding agent, follows the tutorial's Build steps, runs every Verify check, writes the journal entry
-and opens the pull request. The owner reviews, merges and tags. Agents follow `AGENTS.md`
-(`CLAUDE.md` links to it). Host-level and destructive steps are always done by the owner.
+and opens the pull request. The owner reviews, merges and tags. Agents follow `AGENTS.md`.
+Host-level and destructive steps are always done by the owner.

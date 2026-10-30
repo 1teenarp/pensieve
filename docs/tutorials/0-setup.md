@@ -26,7 +26,7 @@ All tutorials build into one repository, `pensieve`, grouped by domain rather th
 ```plain
 pensieve/
   README.md                 # what this is and how to read it
-  AGENTS.md                 # working agreement for coding agents (CLAUDE.md links here)
+  AGENTS.md                 # working agreement for coding agents
   versions.env              # every pinned image tag and tool version (committed)
   .env.example              # secrets and paths (copy to .env, never commit .env)
   shapes/                   # cluster sizes: small.env, large.env, numa.env
@@ -71,15 +71,24 @@ When a later phase says "add to the Makefile", the targets go in that stack's `.
 
 ### Storage tiers
 
-Each kind of data goes to the cheapest device that is fast enough for it, behind a path in `.env`. Only one NVMe is detected while both GPUs are installed, so two old SATA SSDs stand in for the fast tiers for now:
+Each kind of data goes to the cheapest device that is fast enough for it, behind a path in `.env`. Only one NVMe is detected while both GPUs are installed, so the root NVMe also carries the small, write-heavy data, and an old SATA SSD serves as scratch:
 
 | Tier | Device today | Mounted at | Holds | `.env` variable |
 | --- | --- | --- | --- | --- |
-| OS | 1.8 TB NVMe (`nvme0n1`), ext4 on LVM | `/` | OS, Docker images; Tutorial 3's training checkpoints under `/srv/pensieve` | `DL_CKPT` |
-| hot | 477 GB SATA SSD (`sdc`), ZFS pool `hot` | `/hot` | Postgres (catalog, source DB, Airflow, MLflow), Kafka logs | `PG_ROOT`, `KAFKA_DATA` |
+| OS + fast | 1.8 TB NVMe (`nvme0n1`), ext4 on LVM | `/`, data under `/srv/pensieve` | OS, Docker images, Postgres (catalog, source DB, Airflow, MLflow), Kafka logs, Tutorial 3's training checkpoints | `PG_ROOT`, `KAFKA_DATA`, `DL_CKPT` |
 | scratch | 931 GB SATA SSD (`sdb`), XFS | `/mnt/scratch` | Spark shuffle and spill; disposable | `SCRATCH_DIR` |
-| lake | 18 TB HDD (`sda`), ZFS pool `lake` | `/lake` | Iceberg tables, landing zone, Spark event logs, stream checkpoints, training datasets | `DATA_ROOT`, `DL_DATA` |
+| lake | 18 TB HDD (`sda`), ZFS pool `lake`, with a 477 GB SATA SSD (`sdc`) as read cache | `/lake` | Iceberg tables, landing zone, Spark event logs, stream checkpoints, training datasets | `DATA_ROOT`, `DL_DATA` |
 | trunk | 18 TB HDD (`sdd`), ZFS pool `trunk` | `/trunk` | Model weights (the existing `/trunk/ai` library) | `MODEL_CACHE` |
+
+Measured with `fio` on 30 Oct 2026 (ZFS tests on a dataset with `primarycache=metadata`, so RAM doesn't hide the disk):
+
+| Device | Sequential write | 4K random read |
+| --- | --- | --- |
+| 931 GB SSD, XFS (scratch) | 533 MB/s | 73.6k IOPS |
+| 477 GB PNY SSD, ZFS 16K records | 72 MB/s sustained | 4.9k IOPS |
+| 18 TB HDD, ZFS 1M records (lake) | 203 MB/s | 108 IOPS |
+
+The PNY slows to about 70 MB/s on sustained writes even after a full TRIM, too slow for Postgres and Kafka. As a read cache it is still about 45 times faster than the HDD at random reads, and losing it costs nothing.
 
 No tier is redundant yet. That is acceptable while the lake holds sample data you can regenerate and models you can re-download.
 
@@ -87,10 +96,10 @@ No tier is redundant yet. That is acceptable while the lake holds sample data yo
 
 | Tier | Ideal hardware | Move from today's setup |
 | --- | --- | --- |
-| OS | The current NVMe | Nothing; training checkpoints move to scratch |
-| hot | 2 NVMe drives, ZFS mirror | `zpool attach hot <sdc> <nvme-a>`, wait for the resilver, `zpool detach hot <sdc>`, then attach `<nvme-b>` as the mirror. Paths don't change. |
+| OS | The current NVMe | Postgres, Kafka and checkpoints move off it |
+| fast | 2 NVMe drives, ZFS mirror | Create the pool, copy `/srv/pensieve` onto it with the services stopped, then mount it at `/srv/pensieve`. Paths don't change. |
 | scratch | 1 dedicated 4 TB NVMe, XFS | Format it, point the `/mnt/scratch` line in `/etc/fstab` at it. Paths don't change. |
-| lake | 3 or more 18 TB HDDs as RAID-Z1 or mirrors, plus a mirrored SSD pair as a special vdev for metadata | Short term: `zpool attach lake <sda> <new-hdd>` makes it a mirror. RAID-Z means a new pool and a `zfs send` |
+| lake | 3 or more 18 TB HDDs as RAID-Z1 or mirrors, a mirrored SSD pair as a special vdev for metadata, an NVMe read cache | Short term: `zpool attach lake <sda> <new-hdd>` makes it a mirror. RAID-Z means a new pool and a `zfs send`. Swap the cache with `zpool remove lake <pny>` then `zpool add lake cache <nvme>` |
 | trunk | A second 18 TB HDD as its mirror | `zpool attach trunk <sdd> <new-hdd>` |
 
 Because every service reads its location from `.env`, moving to the ideal setup touches the host and `.env` only, never the repo.
@@ -100,13 +109,13 @@ Because every service reads its location from `.env`, moving to the ideal setup 
 1. **Install Docker Engine and the Compose plugin** from Docker's official apt repository. You need Compose 2.20 or newer. Add yourself to the `docker` group and log back in.
 2. **Install the host tools:** `git`, `gh` (GitHub CLI), `uv`, `pre-commit`, `gettext-base` (for `envsubst`), `jq` and `numactl`. Run `gh auth login` so you and the agent can push branches and open pull requests.
 3. **Pick a NUMA layout in the BIOS.** Set NPS (nodes per socket) to 4 and leave "L3 as NUMA" (ACPI SRAT L3 Cache as NUMA Domain) off. Leave memory interleaving and the other Memory Addressing options on Auto. Nothing needs NPS4 until Tutorial 1's Phase 7, but changing it later means a reboot in the middle of experiments.
-4. **Find the two SATA SSDs by their stable names.** Everything below erases them, so check the sizes match: about 931 GB for scratch (`sdb` today) and 477 GB for hot (`sdc`).
+4. **Find the two SATA SSDs by their stable names.** The next steps erase them, so check the sizes: about 931 GB for scratch (`sdb` today) and 477 GB for the lake's read cache (`sdc`).
 
 ```bash
 lsblk -o NAME,SIZE,MODEL,MOUNTPOINT
 ls -l /dev/disk/by-id/ | grep -E 'sd[bc]$'      # copy the two ata-... names
 SCRATCH_DEV=/dev/disk/by-id/ata-<931GB-ssd>
-HOT_DEV=/dev/disk/by-id/ata-<477GB-ssd>
+CACHE_DEV=/dev/disk/by-id/ata-<477GB-ssd>
 ```
 
 5. **Scratch: XFS on the 931 GB SSD** for Spark shuffle and spill.
@@ -120,19 +129,7 @@ sudo systemctl daemon-reload && sudo mount -a
 sudo mkdir -p /mnt/scratch/spark && sudo chown 185:185 /mnt/scratch/spark   # 185 = spark user in the image
 ```
 
-6. **Hot: a ZFS pool on the 477 GB SSD** for Postgres and Kafka. Small records suit Postgres's 8 KB pages; `autotrim` keeps the SSD fast.
-
-```bash
-findmnt /hot; ls -A /hot 2>/dev/null              # both must print nothing
-sudo wipefs -a ${HOT_DEV}-part* $HOT_DEV
-sudo zpool create -f -o ashift=12 -o autotrim=on \
-  -O compression=lz4 -O atime=off -O xattr=sa -O mountpoint=/hot hot $HOT_DEV
-sudo zfs create -o recordsize=16K hot/lakehouse
-```
-
-The pool is called `hot`, not `buffer`, so it can't collide with the old `buffer` pool if the missing NVMe comes back, or with a leftover `/buffer` folder on the root drive.
-
-7. **Lake: a ZFS pool on the empty 18 TB HDD**, kept apart from `trunk` so a failure in one can't take the other with it. Large records suit the big files object stores write.
+6. **Lake: a ZFS pool on the empty 18 TB HDD**, kept apart from `trunk` so a failure in one can't take the other with it. Large records suit the big files object stores write.
 
 ```bash
 sudo wipefs -n /dev/sda                           # must print nothing
@@ -143,24 +140,38 @@ sudo mkdir -p /lake/lakehouse/{seaweedfs,landing,spark-events}
 sudo chown 185:185 /lake/lakehouse/spark-events
 ```
 
-8. **Root folder for later tutorials:** `sudo mkdir -p /srv/pensieve`. Tutorial 3 puts training checkpoints here, on the fastest drive.
+7. **Read cache for lake: the 477 GB SSD.** ZFS keeps recently read lake blocks on it (L2ARC), so repeated Trino and Spark reads skip the HDD. It holds only copies: if it fails the pool loses nothing, and `zpool remove lake $CACHE_DEV` takes it out. With 1 TB of RAM most hot data stays in the in-memory cache anyway, so expect a modest gain.
+
+```bash
+sudo wipefs -a ${CACHE_DEV}-part* $CACHE_DEV
+sudo zpool add lake cache $CACHE_DEV
+zpool status lake                                 # the SSD appears under "cache"
+```
+
+8. **Fast data on the root NVMe.** Postgres and Kafka make many small synced writes, which the NVMe handles far better than either SATA SSD. Tutorial 2 adds `kafka/` and Tutorial 3 adds `dl/` here: `sudo mkdir -p /srv/pensieve/postgres`.
 
 ### Verify
 
 - `docker compose version` shows 2.20 or newer, and `docker run --rm hello-world` works without `sudo`.
 - `numactl -H` lists 4 nodes, each with 14 cores plus their SMT siblings and about 250 GB of memory.
 - `df -h /mnt/scratch` shows about 930 GB, and `findmnt /mnt/scratch` shows `xfs`.
-- `zpool list` shows `hot`, `lake` and `trunk` ONLINE; `zfs get recordsize hot/lakehouse lake/lakehouse` shows `16K` and `1M`.
+- `zpool list` shows `lake` and `trunk` ONLINE, `zpool status lake` lists the 477 GB SSD under `cache`, and `zfs get recordsize lake/lakehouse` shows `1M`.
 - `gh auth status` shows you logged in.
 
 ### Explore (optional)
 
-- **Measure each tier before Spark does.** Run the same two `fio` tests with `--filename` on `/mnt/scratch`, `/hot/lakehouse` and `/lake/lakehouse`, then delete the test files. The agent records the numbers in `docs/benchmarks.md` during Step 3; Tutorial 1's Phase 7 compares Spark stage times against them.
+- **Measure each tier before Spark does.** fio runs as you, so it needs a folder you own, and ZFS needs a throwaway dataset that caches only metadata, or 1 TB of RAM hides the disk. Compare your numbers with the table above; the agent records them in `docs/benchmarks.md` during Step 3, and Tutorial 1's Phase 7 compares Spark stage times against them.
 
 ```bash
-fio --name=seqwrite --filename=/mnt/scratch/fio.test --size=20G --bs=1M --rw=write --direct=1 --ioengine=libaio --iodepth=32
-fio --name=randread --filename=/mnt/scratch/fio.test --size=20G --bs=4k --rw=randread --direct=1 --ioengine=libaio --iodepth=64
-rm /mnt/scratch/fio.test
+sudo mkdir -p /mnt/scratch/fio && sudo chown $USER /mnt/scratch/fio
+sudo zfs create -o primarycache=metadata -o recordsize=1M lake/fio && sudo chown $USER /lake/fio
+for d in /mnt/scratch/fio /lake/fio; do
+  echo "== $d"
+  fio --name=seqwrite --filename=$d/fio.test --size=8G --bs=1M --rw=write --direct=1 --ioengine=libaio --iodepth=32 | grep -E '^\s+write:'
+  fio --name=randread --filename=$d/fio.test --size=8G --bs=4k --rw=randread --direct=1 --ioengine=libaio --iodepth=64 --runtime=30 --time_based | grep -E '^\s+read:'
+  rm -f $d/fio.test
+done
+cd ~; sudo zfs destroy lake/fio; rmdir /mnt/scratch/fio
 ```
 
 - **See your NUMA layout.** Compare `lscpu` and `numactl -H`. Each logical CPU N has its SMT sibling at N+56, so node 0 is `0-13,56-69`, node 1 `14-27,70-83`, node 2 `28-41,84-97` and node 3 `42-55,98-111`. Phase 7 pins workers to these.
@@ -180,11 +191,7 @@ gh repo create pensieve --private --clone && cd pensieve
 mkdir -p docs/tutorials docs/journal .github
 ```
 
-2. **Add the four starter files** at these paths: `README.md`, `AGENTS.md`, `docs/journal/TEMPLATE.md`, `.github/pull_request_template.md`. Then link `CLAUDE.md` to `AGENTS.md`, because Claude Code reads `CLAUDE.md`:
-
-```bash
-ln -s AGENTS.md CLAUDE.md
-```
+2. **Add the four starter files** at these paths: `README.md`, `AGENTS.md`, `docs/journal/TEMPLATE.md`, `.github/pull_request_template.md`:
 
 3. **Export every tutorial to Markdown** from its page and save them as:
 
@@ -207,7 +214,6 @@ git push -u origin main
 ### Verify
 
 - `gh repo view --web` shows the README rendered on the repo page.
-- `ls -l CLAUDE.md` shows the link to `AGENTS.md`.
 - `ls docs/tutorials` lists four files.
 
 ## Step 3 (agent): Build the repo skeleton
@@ -281,7 +287,7 @@ exec docker compose -p homelab --project-directory platform "${args[@]}" "$@"
 ```bash
 HOST_NAME=pensive
 DATA_ROOT=/lake/lakehouse
-PG_ROOT=/hot/lakehouse
+PG_ROOT=/srv/pensieve/postgres
 SCRATCH_DIR=/mnt/scratch/spark
 
 S3_ACCESS_KEY=lakeadmin
