@@ -1,0 +1,15 @@
+services:
+  source-db:
+    image: postgres:${POSTGRES_TAG}
+    environment:
+      POSTGRES_USER: ops
+      POSTGRES_PASSWORD: ${SOURCE_DB_PASSWORD}
+      POSTGRES_DB: ops
+    volumes:
+      - ${PG_ROOT}/source-db:/var/lib/postgresql/data
+      - ./conf/source-db:/docker-entrypoint-initdb.d:ro
+    networks: [lake]
+
+networks:
+  lake:
+    external: true
