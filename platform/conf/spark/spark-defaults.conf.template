@@ -10,3 +10,18 @@ spark.eventLog.dir                    file:///opt/spark/events
 spark.history.fs.logDirectory         file:///opt/spark/events
 spark.ui.reverseProxy                 true
 spark.ui.reverseProxyUrl              http://${HOST_NAME}:8080
+# Iceberg REST catalog (Polaris); `warehouse` is the Polaris catalog name, not an S3 path
+spark.sql.extensions                          org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+spark.sql.defaultCatalog                      lake
+spark.sql.catalog.lake                        org.apache.iceberg.spark.SparkCatalog
+spark.sql.catalog.lake.type                   rest
+spark.sql.catalog.lake.uri                    http://polaris:8181/api/catalog
+spark.sql.catalog.lake.warehouse              lake
+spark.sql.catalog.lake.credential             ${POLARIS_CLIENT_ID}:${POLARIS_CLIENT_SECRET}
+spark.sql.catalog.lake.scope                  PRINCIPAL_ROLE:ALL
+spark.sql.catalog.lake.io-impl                org.apache.iceberg.aws.s3.S3FileIO
+spark.sql.catalog.lake.s3.endpoint            http://seaweedfs:8333
+spark.sql.catalog.lake.s3.path-style-access   true
+spark.sql.catalog.lake.s3.access-key-id       ${S3_ACCESS_KEY}
+spark.sql.catalog.lake.s3.secret-access-key   ${S3_SECRET_KEY}
+spark.sql.catalog.lake.client.region          us-east-1
