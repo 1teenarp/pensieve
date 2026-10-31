@@ -12,13 +12,14 @@ endif
 conf: $(SPARK_DEFAULTS)
 
 $(SPARK_DEFAULTS): platform/conf/spark/spark-defaults.conf.template $(wildcard .env) shapes/$(SHAPE).env
-	envsubst '$${EXECUTOR_CORES} $${EXECUTOR_MEMORY} $${APP_MAX_CORES} $${HOST_NAME}' < $< > $@
+	envsubst '$${EXECUTOR_CORES} $${EXECUTOR_MEMORY} $${APP_MAX_CORES} $${HOST_NAME} $${POLARIS_CLIENT_ID} $${POLARIS_CLIENT_SECRET} $${S3_ACCESS_KEY} $${S3_SECRET_KEY}' < $< > $@
 	printf 'SPARK_DEFAULTS_SHAPE=%s\n' '$(SHAPE)' > $@.shape
 
 # usage: make submit JOB=ingest/tlc_bronze.py ARGS="--month 2024-01"
 submit:
 	$(DC) run --rm spark-client lake-submit $(SUBMIT_OPTS) /opt/jobs/$(JOB) $(ARGS)
 
-# placeholder until Phase 3 moves the driver-IP lookup inside the container
+# the driver IP must be read inside the container: a container hostname is often not
+# resolvable by other containers, and the host cannot see the container's IP
 sql:
-	$(DC) run --rm spark-client /opt/spark/bin/spark-sql --conf spark.driver.host=$$(hostname -i)
+	$(DC) run --rm spark-client sh -c 'spark-sql --conf spark.driver.host=$$(hostname -i)'
