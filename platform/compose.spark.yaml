@@ -47,6 +47,21 @@ services:
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
     ports: ["18080:18080"]
 
+  spark-connect:                  # long-running driver for notebooks via Spark Connect
+    <<: *spark
+    command: >
+      /opt/spark/sbin/start-connect-server.sh
+      --conf spark.driver.host=spark-connect
+      --conf spark.cores.max=${CONNECT_MAX_CORES:-16}
+      --conf spark.dynamicAllocation.enabled=true
+      --conf spark.dynamicAllocation.shuffleTracking.enabled=true
+      --conf spark.dynamicAllocation.executorIdleTimeout=120s
+    environment:
+      SPARK_NO_DAEMONIZE: "true"           # keep the server in the foreground
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD}
+    ports: ["15002:15002", "4040:4040"]   # Connect gRPC, driver UI
+    depends_on: [spark-master]
+
   spark-client:                   # throwaway driver container for batch jobs
     <<: *spark
     profiles: [tools]
