@@ -1,0 +1,7 @@
+pyspark-client==4.1.2
+pandas
+pyarrow
+grpcio
+grpcio-status
+protobuf
+googleapis-common-protos

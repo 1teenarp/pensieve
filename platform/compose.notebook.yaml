@@ -1,0 +1,13 @@
+services:
+  jupyter:
+    # explicit tag next to build: (t1-p02 discipline): no auto `latest`, stable digest
+    image: lakehouse/jupyter:${JUPYTER_TAG}
+    build: { context: ./docker/jupyter, args: [JUPYTER_TAG] }
+    ports: ["8890:8888"]
+    volumes:
+      - ../notebooks:/home/jovyan/work
+    networks: [lake]
+
+networks:
+  lake:
+    external: true
