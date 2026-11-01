@@ -1,0 +1,17 @@
+services:
+  trino:
+    image: trinodb/trino:${TRINO_TAG}
+    ports: ["8088:8080"]                 # 8080 is taken by the Spark master UI
+    environment:
+      POLARIS_CLIENT_ID: ${POLARIS_CLIENT_ID}
+      POLARIS_CLIENT_SECRET: ${POLARIS_CLIENT_SECRET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./conf/trino/catalog:/etc/trino/catalog:ro
+    mem_limit: 64g                       # the image sizes its heap from this limit
+    networks: [lake]
+
+networks:
+  lake:
+    external: true
