@@ -25,3 +25,12 @@ spark.sql.catalog.lake.s3.path-style-access   true
 spark.sql.catalog.lake.s3.access-key-id       ${S3_ACCESS_KEY}
 spark.sql.catalog.lake.s3.secret-access-key   ${S3_SECRET_KEY}
 spark.sql.catalog.lake.client.region          us-east-1
+# Prometheus metrics (Phase 7); the servlet paths come from metrics.properties
+spark.ui.prometheus.enabled            true
+spark.metrics.appStatusSource.enabled  true
+# Tuning starting points for this box (Phase 7); per-shape values live in shapes/*.env
+spark.executor.memoryOverhead          ${EXECUTOR_MEMORY_OVERHEAD}
+spark.sql.shuffle.partitions           ${SPARK_SHUFFLE_PARTITIONS}
+spark.sql.adaptive.advisoryPartitionSizeInBytes  128m
+spark.sql.files.maxPartitionBytes      256m
+spark.io.compression.codec             zstd
