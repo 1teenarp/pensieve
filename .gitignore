@@ -3,6 +3,7 @@ platform/conf/**/*.generated
 platform/conf/spark/spark-defaults.conf
 platform/conf/spark/spark-defaults.conf.shape
 platform/conf/seaweedfs/s3.json
+platform/compose.numa.yaml
 __pycache__/
 .venv/
 mlruns/
